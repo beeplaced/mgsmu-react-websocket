@@ -19,63 +19,65 @@ let state: Record<string, WebSocketState> = {};// Map of URL → WebSocketState
 
 const listeners: Record<string, Set<() => void>> = {};
 
-export const getWebSocketState = (url: string): WebSocketState => {
-  return state[url] || { socket: null, connected: false, connecting: false, messages: [], storeHistory: false };
+export const getWebSocketState = (name: string): WebSocketState => {
+  return state[name] || { socket: null, connected: false, connecting: false, messages: [], storeHistory: false };
 };
 
-const getListeners = (url: string): Set<() => void> => {
-  if (!listeners[url]) listeners[url] = new Set();
-  return listeners[url];
+const getListeners = (name: string): Set<() => void> => {
+  if (!listeners[name]) listeners[name] = new Set();
+  return listeners[name];
 };
 
-const notifyListeners = (url: string) => {
-  const subs = getListeners(url);
+const notifyListeners = (name: string) => {
+  const subs = getListeners(name);
   subs.forEach((listener) => {
     try {
       listener();
     } catch (err) {
-      console.error(`WebSocket listener for "${url}" threw an error:`, err);
+      console.error(`WebSocket listener for "${name}" threw an error:`, err);
     }
   });
 };
-const setWebSocketState = (url: string, partial: Partial<WebSocketState>) => {
-  state[url] = { ...getWebSocketState(url), ...partial };
-  notifyListeners(url);
+const setWebSocketState = (name: string, partial: Partial<WebSocketState>) => {
+  state[name] = { ...getWebSocketState(name), ...partial };
+  notifyListeners(name);
 };
 
 const latestMessages: Record<string, WebSocketMessage> = {}; // Latest message per URL
 
-const addMessage = (url: string, msg: WebSocketMessage) => {
-  latestMessages[url] = msg;
-  notifyListeners(url);
+const addMessage = (name: string, msg: WebSocketMessage) => {
+  latestMessages[name] = msg;
+  notifyListeners(name);
 };
 
-const subscribeWebSocket = (url: string, listener: () => void): (() => void) => {
-  const ls = getListeners(url);
+const subscribeWebSocket = (name: string, listener: () => void): (() => void) => {
+  const ls = getListeners(name);
   ls.add(listener);
   return () => ls.delete(listener);
 };
 
 //Usable Hooks
-export const useWebSocketStore = (url: string) => {
-  const [wsValue, setWsValue] = useState<WebSocketState>(() => getWebSocketState(url));
+export const useWebSocketStore = (name: string) => {
+  const [wsValue, setWsValue] = useState<WebSocketState>(() => getWebSocketState(name));
 
   useEffect(() => {
-    const update = () => setWsValue({ ...getWebSocketState(url) });
-    const unsubscribe = subscribeWebSocket(url, update);
+    const update = () => setWsValue({ ...getWebSocketState(name) });
+    const unsubscribe = subscribeWebSocket(name, update);
     return unsubscribe;
-  }, [url]);
+  }, [name]);
 
-  return [latestMessages[url] || null, wsValue] as const;
+  return [latestMessages[name] || null, wsValue] as const;
 };
 
 export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
+  name,
   url,
   autoReconnect = false,
   reconnectDelay = 5000,
   storeHistory = true,
   maxMessages = 2,
 }: {
+  name: string;
   url: string;
   autoReconnect?: boolean;
   reconnectDelay?: number;
@@ -87,14 +89,15 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
     let reconnectTimeout: number | null;
 
     const connect = () => {
-      const current = getWebSocketState(url);
+      const current = getWebSocketState(name);
       if (current.connected || current.connecting) return;
 
-      setWebSocketState(url, { storeHistory, connecting: true });
+      setWebSocketState(name, { storeHistory, connecting: true });
       socket = new WebSocket(url);
 
       socket.onopen = () => {
-        setWebSocketState(url, { socket, connected: true, connecting: false });
+
+        setWebSocketState(name, { socket, connected: true, connecting: false });
       };
 
       socket.onmessage = (event: MessageEvent) => {
@@ -108,14 +111,14 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
             }
           }
           const msg: WebSocketMessage = { message: data, updatedAt: Date.now() };
-          addMessage(url, msg);
+          addMessage(name, msg);
           if (storeHistory) {
-            const cur = getWebSocketState(url);
+            const cur = getWebSocketState(name);
             const updatedMessages = [...cur.messages, msg];
             const limitedMessages = maxMessages !== undefined
               ? updatedMessages.slice(-maxMessages)
               : updatedMessages;
-            setWebSocketState(url, { messages: limitedMessages });
+            setWebSocketState(name, { messages: limitedMessages });
           }
         } catch (error) {
           console.error("Error processing WebSocket message:", error);
@@ -123,7 +126,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
       };
 
       socket.onclose = () => {
-        setWebSocketState(url, { socket: null, connected: false, connecting: false });
+        setWebSocketState(name, { socket: null, connected: false, connecting: false });
         if (autoReconnect) {
           reconnectTimeout = setTimeout(connect, reconnectDelay);
         }
@@ -131,7 +134,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
 
       socket.onerror = (err) => {
         console.error("WebSocket error", err);
-        setWebSocketState(url, { connected: false, connecting: false });
+        setWebSocketState(name, { connected: false, connecting: false });
         if (socket) socket.close();
       };
     };
@@ -141,22 +144,22 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
     return () => {
       if (socket) socket.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      setWebSocketState(url, { socket: null, connected: false, connecting: false });
+      setWebSocketState(name, { socket: null, connected: false, connecting: false });
     };
-  }, [url, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
+  }, [url, name, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
 };
 
-export const disconnectWebSocket = (url: string) => { /** Func to disconnect a WebSocket */
-  const cur = getWebSocketState(url);
+export const disconnectWebSocket = (name: string) => { /** Func to disconnect a WebSocket */
+  const cur = getWebSocketState(name);
   if (cur.socket) cur.socket.close();
-  setWebSocketState(url, { socket: null, connected: false, connecting: false });
+  setWebSocketState(name, { socket: null, connected: false, connecting: false });
 };
 
-export const sendWebSocketMessage = (url: string, msg: MessageData) => { /** Send a message on a specific WebSocket */
-  const { socket, connected } = getWebSocketState(url);
+export const sendWebSocketMessage = (name: string, msg: MessageData) => { /** Send a message on a specific WebSocket */
+  const { socket, connected } = getWebSocketState(name);
 
   if (!connected || !socket) {
-    console.warn("WebSocket is not connected. Cannot send message:", url);
+    console.warn("WebSocket is not connected. Cannot send message:", name);
     return;
   }
 
@@ -167,3 +170,174 @@ export const sendWebSocketMessage = (url: string, msg: MessageData) => { /** Sen
     console.error("Failed to send WebSocket message:", err);
   }
 };
+
+
+// import { useEffect, useState } from "react";
+
+// type MessageData = string | object;
+
+// type WebSocketMessage = { // Type representing a single WebSocket message
+//   message: MessageData;
+//   updatedAt: number;
+// };
+
+// type WebSocketState = { // Type representing a single WebSocket connection state
+//   socket: WebSocket | null;
+//   connected: boolean;
+//   connecting: boolean;
+//   messages: WebSocketMessage[];
+//   storeHistory: boolean;
+// };
+
+// let state: Record<string, WebSocketState> = {};// Map of URL → WebSocketState
+
+// const listeners: Record<string, Set<() => void>> = {};
+
+// export const getWebSocketState = (url: string): WebSocketState => {
+//   return state[url] || { socket: null, connected: false, connecting: false, messages: [], storeHistory: false };
+// };
+
+// const getListeners = (url: string): Set<() => void> => {
+//   if (!listeners[url]) listeners[url] = new Set();
+//   return listeners[url];
+// };
+
+// const notifyListeners = (url: string) => {
+//   const subs = getListeners(url);
+//   subs.forEach((listener) => {
+//     try {
+//       listener();
+//     } catch (err) {
+//       console.error(`WebSocket listener for "${url}" threw an error:`, err);
+//     }
+//   });
+// };
+// const setWebSocketState = (url: string, partial: Partial<WebSocketState>) => {
+//   state[url] = { ...getWebSocketState(url), ...partial };
+//   notifyListeners(url);
+// };
+
+// const latestMessages: Record<string, WebSocketMessage> = {}; // Latest message per URL
+
+// const addMessage = (url: string, msg: WebSocketMessage) => {
+//   latestMessages[url] = msg;
+//   notifyListeners(url);
+// };
+
+// const subscribeWebSocket = (url: string, listener: () => void): (() => void) => {
+//   const ls = getListeners(url);
+//   ls.add(listener);
+//   return () => ls.delete(listener);
+// };
+
+// //Usable Hooks
+// export const useWebSocketStore = (url: string) => {
+//   const [wsValue, setWsValue] = useState<WebSocketState>(() => getWebSocketState(url));
+
+//   useEffect(() => {
+//     const update = () => setWsValue({ ...getWebSocketState(url) });
+//     const unsubscribe = subscribeWebSocket(url, update);
+//     return unsubscribe;
+//   }, [url]);
+
+//   return [latestMessages[url] || null, wsValue] as const;
+// };
+
+// export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
+//   url,
+//   autoReconnect = false,
+//   reconnectDelay = 5000,
+//   storeHistory = true,
+//   maxMessages = 2,
+// }: {
+//   url: string;
+//   autoReconnect?: boolean;
+//   reconnectDelay?: number;
+//   storeHistory?: boolean;
+//   maxMessages?: number;
+// }) => {
+//   useEffect(() => {
+//     let socket: WebSocket | null = null;
+//     let reconnectTimeout: number | null;
+
+//     const connect = () => {
+//       const current = getWebSocketState(url);
+//       if (current.connected || current.connecting) return;
+
+//       setWebSocketState(url, { storeHistory, connecting: true });
+//       socket = new WebSocket(url);
+
+//       socket.onopen = () => {
+//         setWebSocketState(url, { socket, connected: true, connecting: false });
+//       };
+
+//       socket.onmessage = (event: MessageEvent) => {
+//         try {
+//           let data: MessageData = event.data;
+//           if (typeof data === "string") {
+//             try {
+//               data = JSON.parse(data);
+//             } catch (parseError) {
+//               console.warn("no json message");
+//             }
+//           }
+//           const msg: WebSocketMessage = { message: data, updatedAt: Date.now() };
+//           addMessage(url, msg);
+//           if (storeHistory) {
+//             const cur = getWebSocketState(url);
+//             const updatedMessages = [...cur.messages, msg];
+//             const limitedMessages = maxMessages !== undefined
+//               ? updatedMessages.slice(-maxMessages)
+//               : updatedMessages;
+//             setWebSocketState(url, { messages: limitedMessages });
+//           }
+//         } catch (error) {
+//           console.error("Error processing WebSocket message:", error);
+//         }
+//       };
+
+//       socket.onclose = () => {
+//         setWebSocketState(url, { socket: null, connected: false, connecting: false });
+//         if (autoReconnect) {
+//           reconnectTimeout = setTimeout(connect, reconnectDelay);
+//         }
+//       };
+
+//       socket.onerror = (err) => {
+//         console.error("WebSocket error", err);
+//         setWebSocketState(url, { connected: false, connecting: false });
+//         if (socket) socket.close();
+//       };
+//     };
+
+//     connect();
+
+//     return () => {
+//       if (socket) socket.close();
+//       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+//       setWebSocketState(url, { socket: null, connected: false, connecting: false });
+//     };
+//   }, [url, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
+// };
+
+// export const disconnectWebSocket = (url: string) => { /** Func to disconnect a WebSocket */
+//   const cur = getWebSocketState(url);
+//   if (cur.socket) cur.socket.close();
+//   setWebSocketState(url, { socket: null, connected: false, connecting: false });
+// };
+
+// export const sendWebSocketMessage = (url: string, msg: MessageData) => { /** Send a message on a specific WebSocket */
+//   const { socket, connected } = getWebSocketState(url);
+
+//   if (!connected || !socket) {
+//     console.warn("WebSocket is not connected. Cannot send message:", url);
+//     return;
+//   }
+
+//   try {
+//     const payload = typeof msg === "string" ? msg : JSON.stringify(msg);
+//     socket.send(payload);
+//   } catch (err) {
+//     console.error("Failed to send WebSocket message:", err);
+//   }
+// };
