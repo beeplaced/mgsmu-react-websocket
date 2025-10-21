@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 
-type MessageData = string | any[];
+type MessageData = string | object;
 
-export type WebSocketMessage = { // Type representing a single WebSocket message
+type WebSocketMessage = { // Type representing a single WebSocket message
   message: MessageData;
   updatedAt: number;
 };
 
-export type WebSocketState = { // Type representing a single WebSocket connection state
+type WebSocketState = { // Type representing a single WebSocket connection state
   socket: WebSocket | null;
   connected: boolean;
   connecting: boolean;
@@ -17,35 +17,52 @@ export type WebSocketState = { // Type representing a single WebSocket connectio
 
 let state: Record<string, WebSocketState> = {};// Map of URL → WebSocketState
 
-const listeners = new Set<() => void>();
+const listeners: Record<string, Set<() => void>> = {};
 
 export const getWebSocketState = (url: string): WebSocketState => {
   return state[url] || { socket: null, connected: false, connecting: false, messages: [], storeHistory: false };
 };
 
-export const setWebSocketState = (url: string, partial: Partial<WebSocketState>) => { // Update state for a specific URL and notify listeners
+const getListeners = (url: string): Set<() => void> => {
+  if (!listeners[url]) listeners[url] = new Set();
+  return listeners[url];
+};
+
+const notifyListeners = (url: string) => {
+  const subs = getListeners(url);
+  subs.forEach((listener) => {
+    try {
+      listener();
+    } catch (err) {
+      console.error(`WebSocket listener for "${url}" threw an error:`, err);
+    }
+  });
+};
+const setWebSocketState = (url: string, partial: Partial<WebSocketState>) => {
   state[url] = { ...getWebSocketState(url), ...partial };
-  listeners.forEach((l) => l());
+  notifyListeners(url);
 };
 
 const latestMessages: Record<string, WebSocketMessage> = {}; // Latest message per URL
 
-export const addMessage = (url: string, msg: WebSocketMessage) => { // Add a message to a connection
+const addMessage = (url: string, msg: WebSocketMessage) => {
   latestMessages[url] = msg;
-  listeners.forEach((l) => l());
+  notifyListeners(url);
 };
 
-export const subscribeWebSocket = (listener: () => void): (() => void) => { // Subscribe a listener to any state change
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+const subscribeWebSocket = (url: string, listener: () => void): (() => void) => {
+  const ls = getListeners(url);
+  ls.add(listener);
+  return () => ls.delete(listener);
 };
 
-export const useWebSocketStore = (url: string) => { /** Hook to use the WebSocket store reactively in components */
+//Usable Hooks
+export const useWebSocketStore = (url: string) => {
   const [wsValue, setWsValue] = useState<WebSocketState>(() => getWebSocketState(url));
 
   useEffect(() => {
     const update = () => setWsValue({ ...getWebSocketState(url) });
-    const unsubscribe = subscribeWebSocket(update);
+    const unsubscribe = subscribeWebSocket(url, update);
     return unsubscribe;
   }, [url]);
 
@@ -86,7 +103,8 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
           if (typeof data === "string") {
             try {
               data = JSON.parse(data);
-            } catch (parseError) { console.warn("no json message");
+            } catch (parseError) {
+              console.warn("no json message");
             }
           }
           const msg: WebSocketMessage = { message: data, updatedAt: Date.now() };
@@ -120,15 +138,10 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
 
     connect();
 
-    return () => { // Cleanup function
-      if (socket) {
-        socket.close();
-        socket = null;
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
+    return () => {
+      if (socket) socket.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      setWebSocketState(url, { socket: null, connected: false, connecting: false });
     };
   }, [url, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
 };

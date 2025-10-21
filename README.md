@@ -28,24 +28,21 @@ yarn add mgsmu-react-websocket
 
 ```jsx
 import { useEffect } from "react";
-import { useWebSocketStore, useWebSocketConnect, disconnectWebSocket, sendWebSocketMessage,
-  WebSocketMessage, WebSocketState //types
-} from "mgsmu-react-websocket";
+import { useWebSocketStore, useWebSocketConnect, disconnectWebSocket, sendWebSocketMessage } from "mgsmu-react-websocket";
 
 const Example = () => {
   const Connection1 = "wss://ws.ifelse.io";
   const Connection2 = "wss://echo.websocket.org";
 
   // Access latest message and connection state with types
-  const [msg1, ws1]: [WebSocketMessage | null, WebSocketState] = useWebSocketStore(Connection1);
-  const [msg2, ws2]: [WebSocketMessage | null, WebSocketState] = useWebSocketStore(Connection2);
+  const [msg1, ws1] = useWebSocketStore(Connection1);
+  const [msg2, ws2] = useWebSocketStore(Connection2);
 
   // Connect to WebSocket servers
   useWebSocketConnect({ url: Connection1 });
   useWebSocketConnect({ url: Connection2 });
 
-  useEffect(() => {
-    // Log connection state whenever it changes
+  useEffect(() => { // Log connection state whenever it changes
     console.log("Connection2 state:", ws2);
   }, [ws2]);
 
@@ -55,15 +52,15 @@ const Example = () => {
         <h3>Connection 1 Status: {ws1.connected ? "Connected" : "Disconnected"}</h3>
         <div>Latest Message: {JSON.stringify(msg1?.message)}</div>
         <button onClick={() => sendWebSocketMessage(Connection1, "Hello from Connection1")}>
-          Send to Connection1
+          Send String to Connection1
         </button>
         <button onClick={() => disconnectWebSocket(Connection1)}>Disconnect 1</button>
       </div>
       <div>
         <h3>Connection 2 Status: {ws2.connected ? "Connected" : "Disconnected"}</h3>
         <div>Latest Message: {JSON.stringify(msg2?.message)}</div>
-        <button onClick={() => sendWebSocketMessage(Connection2, "Hello from Connection2")}>
-          Send to Connection2
+        <button onClick={() => sendWebSocketMessage(Connection2, { data: true })}>
+          Send Object to Connection2
         </button>
         <button onClick={() => disconnectWebSocket(Connection2)}>Disconnect 2</button>
       </div>
@@ -86,7 +83,7 @@ const [latestMessage, connectionState] = useWebSocketStore(url);
 - connectionState: WebSocketState — the current state of the WebSocket connection:
 
 ```ts
-type MessageData = string | any[];
+type MessageData = string | object;
 
 type WebSocketMessage = { // Type representing a single WebSocket message
   message: MessageData;
@@ -110,7 +107,7 @@ const options = {
   autoReconnect?: boolean;      // default: true
   reconnectDelay?: number;      // ms, default: 5000
   storeHistory?: boolean;       // default: true
-  maxMessages?: number;         // max number of messages to store
+  maxMessages?: number;         // max number of messages to store, default 2
 }
 ```
 
