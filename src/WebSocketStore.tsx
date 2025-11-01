@@ -77,7 +77,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
   reconnectDelay = 5000,
   storeHistory = false,
   maxMessages = 2,
-  heartbeatInterval = 5000
+  heartbeatInterval = 15000
 }: {
   name: string;
   url: string;
@@ -103,7 +103,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
 
       socket.onopen = () => {
         setWebSocketState(name, { socket, connected: true, connecting: false });
-        if (heartbeatInterval) setLastMessageTime(Date.now());
+        //if (heartbeatInterval) setLastMessageTime(Date.now());
       };
 
       socket.onmessage = (event: MessageEvent) => {
