@@ -52,7 +52,7 @@ const App: React.FC = () => {
 ```jsx
 
 import { useEffect } from "react";
-import { useWebSocketStore, disconnectWebSocket, sendWebSocketMessage } from "mgsmu-react-websocket";
+import { useWebSocketStore, disconnectWebSocket, sendWebSocketMessage, clearWebSocketMessage } from "mgsmu-react-websocket";
 
 const Example = () => { //example Route
 
@@ -66,6 +66,14 @@ const Example = () => { //example Route
   useEffect(() => { // Log connection state whenever it changes
     console.log("Connection2 state:", ws2);
   }, [ws2]);
+
+  useEffect(() => { //Remeber to clear message after usage 
+  if (message) {
+    console.log("New message:", message);
+    // ...process message...
+    clearWebSocketMessage("else");
+  }
+}, [msg1]);
 
   return (
     <div>
@@ -138,3 +146,12 @@ const options = {
 - Supports multiple WebSocket connections simultaneously.
 - Automatically handles cleanup and memory management on component unmount.
 - Message history is configurable via storeHistory and maxMessages.
+
+----
+# Changelog
+
+All notable changes to this project will be documented in this file.
+---
+
+## [1.1.2] - 2025-11-01
+- added clearWebSocketMessage

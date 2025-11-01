@@ -170,3 +170,10 @@ export const sendWebSocketMessage = (name: string, msg: MessageData) => { /** Se
     console.error("Failed to send WebSocket message:", err);
   }
 };
+
+export const clearWebSocketMessage = (name: string) => {
+  if (latestMessages[name]) {
+    delete latestMessages[name];
+    notifyListeners(name);
+  }
+};
