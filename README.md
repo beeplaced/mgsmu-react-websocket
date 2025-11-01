@@ -153,5 +153,7 @@ const options = {
 All notable changes to this project will be documented in this file.
 ---
 
+## [1.1.3] - 2025-11-01
+- added heartbeatInterval to send rebounce ping after transfer ends
 ## [1.1.2] - 2025-11-01
 - added clearWebSocketMessage

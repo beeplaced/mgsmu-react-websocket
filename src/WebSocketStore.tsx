@@ -77,6 +77,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
   reconnectDelay = 5000,
   storeHistory = false,
   maxMessages = 2,
+  heartbeatInterval = 5000
 }: {
   name: string;
   url: string;
@@ -84,7 +85,11 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
   reconnectDelay?: number;
   storeHistory?: boolean;
   maxMessages?: number;
+  heartbeatInterval?: number;
 }) => {
+
+  const [lastMessageTime, setLastMessageTime] = useState(Date.now());
+
   useEffect(() => {
     let socket: WebSocket | null = null;
     let reconnectTimeout: number | null;
@@ -97,7 +102,8 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
       socket = new WebSocket(url);
 
       socket.onopen = () => {
-      setWebSocketState(name, { socket, connected: true, connecting: false });
+        setWebSocketState(name, { socket, connected: true, connecting: false });
+        if (heartbeatInterval) setLastMessageTime(Date.now());
       };
 
       socket.onmessage = (event: MessageEvent) => {
@@ -112,6 +118,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
           }
           const msg: WebSocketMessage = { message: data, updatedAt: Date.now() };
           addMessage(name, msg);
+          if (heartbeatInterval) setLastMessageTime(Date.now());
           if (storeHistory) {
             const cur = getWebSocketState(name);
             const updatedMessages = [...cur.messages, msg];
@@ -147,6 +154,18 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
       setWebSocketState(name, { socket: null, connected: false, connecting: false });
     };
   }, [url, name, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
+
+  useEffect(() => {
+    if (!heartbeatInterval) return;
+    const timer = setTimeout(() => {
+      addMessage(name, {
+        message: { info: `end of transfer after ${heartbeatInterval}ms` },
+        updatedAt: Date.now()
+      });
+    }, heartbeatInterval);
+    return () => clearTimeout(timer);
+  }, [lastMessageTime, heartbeatInterval]);
+
 };
 
 export const disconnectWebSocket = (name: string) => { /** Func to disconnect a WebSocket */
