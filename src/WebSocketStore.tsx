@@ -88,7 +88,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
   heartbeatInterval?: number;
 }) => {
 
-  const [lastMessageTime, setLastMessageTime] = useState(Date.now());
+  const [lastMessageTime, setLastMessageTime] = useState<number | null>(null);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -156,7 +156,7 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
   }, [url, name, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
 
   useEffect(() => {
-    if (!heartbeatInterval) return;
+    if (!heartbeatInterval || lastMessageTime === null) return;
     const timer = setTimeout(() => {
       addMessage(name, {
         message: { info: `end of transfer after ${heartbeatInterval}ms` },

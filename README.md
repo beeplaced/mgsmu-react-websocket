@@ -152,6 +152,8 @@ const options = {
 
 All notable changes to this project will be documented in this file.
 ---
+## [1.1.5] - 2025-11-02
+- ping only start after first message
 ## [1.1.4] - 2025-11-01
 - raise default heartbeatInterval to 15, and no set on connect
 ## [1.1.3] - 2025-11-01
