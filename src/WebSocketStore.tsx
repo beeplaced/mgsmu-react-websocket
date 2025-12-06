@@ -39,6 +39,7 @@ const notifyListeners = (name: string) => {
     }
   });
 };
+
 const setWebSocketState = (name: string, partial: Partial<WebSocketState>) => {
   state[name] = { ...getWebSocketState(name), ...partial };
   notifyListeners(name);
@@ -70,14 +71,15 @@ export const useWebSocketStore = (name: string) => {
   return [latestMessages[name] || null, wsValue] as const;
 };
 
-export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
+export const useWebSocketConnect = ({
   name,
   url,
   autoReconnect = false,
   reconnectDelay = 5000,
   storeHistory = false,
   maxMessages = 2,
-  heartbeatInterval = 15000
+  heartbeatInterval = 5000,
+  type = "ws" // new optional parameter: "ws" or "sse"
 }: {
   name: string;
   url: string;
@@ -86,86 +88,100 @@ export const useWebSocketConnect = ({ /** Hook to connect to a WebSocket */
   storeHistory?: boolean;
   maxMessages?: number;
   heartbeatInterval?: number;
+  type?: "ws" | "sse";
 }) => {
-
-  const [lastMessageTime, setLastMessageTime] = useState<number | null>(null);
+  const [lastMessageTime, setLastMessageTime] = useState(Date.now());
 
   useEffect(() => {
     let socket: WebSocket | null = null;
-    let reconnectTimeout: number | null;
+    let evtSource: EventSource | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const connect = () => {
       const current = getWebSocketState(name);
       if (current.connected || current.connecting) return;
 
       setWebSocketState(name, { name, storeHistory, connecting: true });
-      socket = new WebSocket(url);
 
-      socket.onopen = () => {
-        setWebSocketState(name, { socket, connected: true, connecting: false });
-        //if (heartbeatInterval) setLastMessageTime(Date.now());
-      };
+      if (type === "ws") {
+        // Original WebSocket connection
+        socket = new WebSocket(url);
 
-      socket.onmessage = (event: MessageEvent) => {
-        try {
-          let data: MessageData = event.data;
-          if (typeof data === "string") {
-            try {
-              data = JSON.parse(data);
-            } catch (parseError) {
-              console.warn("no json message");
-            }
-          }
-          const msg: WebSocketMessage = { message: data, updatedAt: Date.now() };
-          addMessage(name, msg);
+        socket.onopen = () => setWebSocketState(name, { socket, connected: true, connecting: false });
+
+        socket.onmessage = (event: MessageEvent) => {
+          handleMessage(event.data);
           if (heartbeatInterval) setLastMessageTime(Date.now());
-          if (storeHistory) {
-            const cur = getWebSocketState(name);
-            const updatedMessages = [...cur.messages, msg];
-            const limitedMessages = maxMessages !== undefined
-              ? updatedMessages.slice(-maxMessages)
-              : updatedMessages;
-            setWebSocketState(name, { messages: limitedMessages });
-          }
-        } catch (error) {
-          console.error("Error processing WebSocket message:", error);
-        }
-      };
+        };
 
-      socket.onclose = () => {
-        setWebSocketState(name, { socket: null, connected: false, connecting: false });
-        if (autoReconnect) {
-          reconnectTimeout = setTimeout(connect, reconnectDelay);
-        }
-      };
+        socket.onclose = () => {
+          setWebSocketState(name, { socket: null, connected: false, connecting: false });
+          if (autoReconnect) reconnectTimeout = setTimeout(connect, reconnectDelay);
+        };
 
-      socket.onerror = (err) => {
-        console.error("WebSocket error", err);
-        setWebSocketState(name, { connected: false, connecting: false });
-        if (socket) socket.close();
-      };
+        socket.onerror = (err) => {
+          console.error("WebSocket error", err);
+          setWebSocketState(name, { connected: false, connecting: false });
+          if (socket) socket.close();
+        };
+      } else if (type === "sse") {
+        // SSE connection
+        evtSource = new EventSource(url);
+        setWebSocketState(name, { socket: null, connected: true, connecting: false });
+
+        evtSource.onmessage = (event) => {
+          handleMessage(event.data);
+          if (heartbeatInterval) setLastMessageTime(Date.now());
+        };
+
+        evtSource.onerror = (err) => {
+          console.error("SSE error:", err);
+          // optionally set connected false
+          // autoReconnect is handled automatically by EventSource
+        };
+      }
+    };
+
+    const handleMessage = (data: any) => {
+      try {
+        let parsed: MessageData = data;
+        if (typeof data === "string") {
+          try { parsed = JSON.parse(data); } catch {}
+        }
+
+        const msg: WebSocketMessage = { message: parsed, updatedAt: Date.now() };
+        addMessage(name, msg);
+
+        if (storeHistory) {
+          const cur = getWebSocketState(name);
+          const updatedMessages = [...cur.messages, msg];
+          const limitedMessages = maxMessages ? updatedMessages.slice(-maxMessages) : updatedMessages;
+          setWebSocketState(name, { messages: limitedMessages });
+        }
+      } catch (error) {
+        console.error("Error processing message:", error);
+      }
     };
 
     connect();
 
     return () => {
       if (socket) socket.close();
+      if (evtSource) evtSource.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       setWebSocketState(name, { socket: null, connected: false, connecting: false });
     };
-  }, [url, name, autoReconnect, reconnectDelay, storeHistory, maxMessages]);
-
-  useEffect(() => {
-    if (!heartbeatInterval || lastMessageTime === null) return;
+  }, [url, name, autoReconnect, reconnectDelay, storeHistory, maxMessages, type, heartbeatInterval]);
+ 
+  useEffect(() => { // Countdown / heartbeat effect
     const timer = setTimeout(() => {
-      addMessage(name, {
-        message: { info: `end of transfer after ${heartbeatInterval}ms` },
-        updatedAt: Date.now()
+      addMessage(name, { 
+        message: { info: `end of transfer after ${heartbeatInterval}ms` }, 
+        updatedAt: Date.now() 
       });
     }, heartbeatInterval);
     return () => clearTimeout(timer);
-  }, [lastMessageTime, heartbeatInterval]);
-
+  }, [lastMessageTime]);
 };
 
 export const disconnectWebSocket = (name: string) => { /** Func to disconnect a WebSocket */
@@ -177,8 +193,14 @@ export const disconnectWebSocket = (name: string) => { /** Func to disconnect a 
 export const sendWebSocketMessage = (name: string, msg: MessageData) => { /** Send a message on a specific WebSocket */
   const { socket, connected } = getWebSocketState(name);
 
-  if (!connected || !socket) {
-    console.warn("WebSocket is not connected. Cannot send message:", name);
+  if (!connected) {
+    console.warn(`Connection "${name}" is not connected. Cannot send message.`);
+    return;
+  }
+
+  // If it's SSE (socket is null), sending is not supported
+  if (!socket) {
+    console.warn(`Connection "${name}" is SSE (receive-only). Cannot send message.`);
     return;
   }
 
