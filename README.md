@@ -159,6 +159,9 @@ const options = {
 
 All notable changes to this project will be documented in this file.
 ---
+[1.1.7] - 2025-12-07
+- unified connection message, JSON.parse for SSE
+- State: connection: WebSocket | EventSource | null
 [1.1.6] - 2025-12-06
 - Added SSE support — useWebSocketConnect can now connect to Server-Sent Events (SSE) endpoints with type: "sse".
 - SSE connections are receive-only; messages are stored in global state and accessible via useWebSocketStore.

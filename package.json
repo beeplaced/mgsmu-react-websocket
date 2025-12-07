@@ -1,6 +1,6 @@
 {
   "name": "mgsmu-react-websocket",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "mgsmu-react-websocket is a library for React that provides global state management for WebSocket and SSE connections",
   "main": "dist/WebSocketStore.js",
   "types": "dist/WebSocketStore.d.ts",
@@ -24,6 +24,8 @@
   "devDependencies": {
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+      "@types/glob": "8.1.0",
+  "minimatch": "9.0.1"
   }
 }
